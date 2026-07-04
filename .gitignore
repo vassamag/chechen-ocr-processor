@@ -1,0 +1,33 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Local OCR data
+input/
+output/
+
+# Source scans / documents / generated text
+*.docx
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.tif
+*.tiff
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*_backup*
+
+# OS / IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
