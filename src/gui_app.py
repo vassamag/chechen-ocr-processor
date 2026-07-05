@@ -47,7 +47,7 @@ class ChechenOCRGui(tk.Tk):
 
         subtitle = ttk.Label(
             root,
-            text="TXT post-processing version. Input: raw OCR .txt → Output: corrected text and reports.",
+            text="TXT post-processing version. Input: raw OCR .txt -> Output: corrected text and reports.",
         )
         subtitle.pack(anchor="w", pady=(2, 12))
 
@@ -80,7 +80,11 @@ class ChechenOCRGui(tk.Tk):
         buttons = ttk.Frame(root)
         buttons.pack(fill=tk.X, pady=(10, 8))
 
-        self.run_button = ttk.Button(buttons, text="Run processor", command=self.run_pipeline)
+        self.run_button = ttk.Button(
+            buttons,
+            text="Run processor",
+            command=self.run_pipeline,
+        )
         self.run_button.pack(side=tk.LEFT)
 
         self.open_button = ttk.Button(
@@ -90,14 +94,21 @@ class ChechenOCRGui(tk.Tk):
         )
         self.open_button.pack(side=tk.LEFT, padx=(8, 0))
 
-        self.clear_button = ttk.Button(buttons, text="Clear log", command=self.clear_log)
+        self.clear_button = ttk.Button(
+            buttons,
+            text="Clear log",
+            command=self.clear_log,
+        )
         self.clear_button.pack(side=tk.LEFT, padx=(8, 0))
 
         status_frame = ttk.Frame(root)
         status_frame.pack(fill=tk.X, pady=(0, 6))
 
         ttk.Label(status_frame, text="Status:").pack(side=tk.LEFT)
-        ttk.Label(status_frame, textvariable=self.status_var).pack(side=tk.LEFT, padx=(6, 0))
+        ttk.Label(status_frame, textvariable=self.status_var).pack(
+            side=tk.LEFT,
+            padx=(6, 0),
+        )
 
         log_label = ttk.Label(root, text="Log:")
         log_label.pack(anchor="w")
@@ -107,15 +118,34 @@ class ChechenOCRGui(tk.Tk):
 
         self.log_text = tk.Text(
             log_frame,
-            wrap="word",
+            wrap="none",
             height=18,
             font=("Consolas", 10),
         )
-        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        scrollbar = ttk.Scrollbar(log_frame, orient=tk.VERTICAL, command=self.log_text.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.log_text.configure(yscrollcommand=scrollbar.set)
+        y_scrollbar = ttk.Scrollbar(
+            log_frame,
+            orient=tk.VERTICAL,
+            command=self.log_text.yview,
+        )
+
+        x_scrollbar = ttk.Scrollbar(
+            log_frame,
+            orient=tk.HORIZONTAL,
+            command=self.log_text.xview,
+        )
+
+        self.log_text.configure(
+            yscrollcommand=y_scrollbar.set,
+            xscrollcommand=x_scrollbar.set,
+        )
+
+        self.log_text.grid(row=0, column=0, sticky="nsew")
+        y_scrollbar.grid(row=0, column=1, sticky="ns")
+        x_scrollbar.grid(row=1, column=0, sticky="ew")
+
+        log_frame.rowconfigure(0, weight=1)
+        log_frame.columnconfigure(0, weight=1)
 
         self.log(
             f"{APP_TITLE} {APP_VERSION}\n"
@@ -147,7 +177,10 @@ class ChechenOCRGui(tk.Tk):
     def open_output_folder(self) -> None:
         out = self.output_var.get().strip()
         if not out:
-            messagebox.showwarning("No output folder", "Please choose an output folder first.")
+            messagebox.showwarning(
+                "No output folder",
+                "Please choose an output folder first.",
+            )
             return
 
         out_path = Path(out)
@@ -156,7 +189,10 @@ class ChechenOCRGui(tk.Tk):
         try:
             os.startfile(str(out_path))
         except Exception as exc:
-            messagebox.showerror("Error", f"Could not open output folder:\n{exc}")
+            messagebox.showerror(
+                "Error",
+                f"Could not open output folder:\n{exc}",
+            )
 
     def clear_log(self) -> None:
         self.log_text.delete("1.0", tk.END)
@@ -174,13 +210,19 @@ class ChechenOCRGui(tk.Tk):
         base_name = self.base_name_var.get().strip() or "processed"
 
         if not input_text:
-            messagebox.showwarning("Missing input", "Please choose an input TXT file.")
+            messagebox.showwarning(
+                "Missing input",
+                "Please choose an input TXT file.",
+            )
             return None
 
         input_path = Path(input_text)
 
         if not input_path.exists():
-            messagebox.showerror("Input not found", f"Input file not found:\n{input_path}")
+            messagebox.showerror(
+                "Input not found",
+                f"Input file not found:\n{input_path}",
+            )
             return None
 
         if input_path.suffix.lower() != ".txt":
@@ -192,7 +234,10 @@ class ChechenOCRGui(tk.Tk):
                 return None
 
         if not output_text:
-            messagebox.showwarning("Missing output folder", "Please choose an output folder.")
+            messagebox.showwarning(
+                "Missing output folder",
+                "Please choose an output folder.",
+            )
             return None
 
         output_path = Path(output_text)
@@ -282,7 +327,10 @@ class ChechenOCRGui(tk.Tk):
         self.status_var.set("Failed")
         self.run_button.configure(state=tk.NORMAL)
         self.log(f"\nFAILED with exit code {return_code}")
-        messagebox.showerror("Failed", f"Processing failed with exit code {return_code}.")
+        messagebox.showerror(
+            "Failed",
+            f"Processing failed with exit code {return_code}.",
+        )
 
     def _process_exception(self, exc: Exception) -> None:
         self.status_var.set("Error")
