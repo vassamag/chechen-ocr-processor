@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import runpy
 import subprocess
 import sys
 import threading
@@ -20,6 +21,37 @@ STATUS_ERROR = "#C62828"
 STATUS_WARNING = "#F9A825"
 
 
+def configure_stdio_utf8() -> None:
+    """
+    Ensure that internal PyInstaller subprocess modes can print Cyrillic
+    characters such as Ӏ and Ї without crashing on Windows code pages.
+    """
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+
+        if stream is None:
+            continue
+
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def get_resource_root() -> Path:
+    """
+    Normal Python mode:
+        project root = .../chechen-ocr-processor
+
+    PyInstaller one-dir mode:
+        resource root = sys._MEIPASS, where --add-data files are placed.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS")).resolve()
+
+    return Path(__file__).resolve().parents[1]
+
+
 class ChechenOCRGui(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -28,8 +60,8 @@ class ChechenOCRGui(tk.Tk):
         self.geometry("860x580")
         self.minsize(780, 520)
 
-        self.project_root = Path(__file__).resolve().parents[1]
-        self.src_dir = self.project_root / "src"
+        self.resource_root = get_resource_root()
+        self.src_dir = self.resource_root / "src"
         self.pipeline_path = self.src_dir / "run_pipeline.py"
 
         self.input_var = tk.StringVar()
@@ -175,7 +207,7 @@ class ChechenOCRGui(tk.Tk):
 
         self.log(
             f"{APP_TITLE} {APP_VERSION}\n"
-            f"Project root: {self.project_root}\n"
+            f"Resource root: {self.resource_root}\n"
             f"Pipeline: {self.pipeline_path}\n"
         )
 
@@ -297,16 +329,28 @@ class ChechenOCRGui(tk.Tk):
 
         output_path.mkdir(parents=True, exist_ok=True)
 
-        command = [
-            sys.executable,
-            str(self.pipeline_path),
-            "--input",
-            str(input_path),
-            "--out-dir",
-            str(output_path),
-            "--base-name",
-            base_name,
-        ]
+        if getattr(sys, "frozen", False):
+            command = [
+                sys.executable,
+                "--run-pipeline",
+                "--input",
+                str(input_path),
+                "--out-dir",
+                str(output_path),
+                "--base-name",
+                base_name,
+            ]
+        else:
+            command = [
+                sys.executable,
+                str(self.pipeline_path),
+                "--input",
+                str(input_path),
+                "--out-dir",
+                str(output_path),
+                "--base-name",
+                base_name,
+            ]
 
         self.run_button.configure(state=tk.DISABLED)
         self.set_status("Running...", STATUS_RUNNING)
@@ -328,6 +372,7 @@ class ChechenOCRGui(tk.Tk):
         try:
             env = os.environ.copy()
             env["PYTHONIOENCODING"] = "utf-8"
+            env["PYTHONUTF8"] = "1"
 
             process = subprocess.Popen(
                 command,
@@ -377,6 +422,33 @@ class ChechenOCRGui(tk.Tk):
 
 
 def main() -> None:
+    configure_stdio_utf8()
+
+    # Internal mode for PyInstaller .exe:
+    # ChechenOCRProcessor.exe --run-pipeline --input ... --out-dir ...
+    if len(sys.argv) > 1 and sys.argv[1] == "--run-pipeline":
+        resource_root = get_resource_root()
+        src_dir = resource_root / "src"
+        sys.path.insert(0, str(src_dir))
+
+        import run_pipeline
+
+        sys.argv = ["run_pipeline.py", *sys.argv[2:]]
+        run_pipeline.main()
+        return
+
+    # Internal mode for PyInstaller .exe:
+    # ChechenOCRProcessor.exe --run-script path\to\script.py ...
+    if len(sys.argv) > 1 and sys.argv[1] == "--run-script":
+        if len(sys.argv) < 3:
+            raise SystemExit("--run-script requires a script path")
+
+        script_path = Path(sys.argv[2]).resolve()
+        sys.argv = [str(script_path), *sys.argv[3:]]
+        os.chdir(str(script_path.parent))
+        runpy.run_path(str(script_path), run_name="__main__")
+        return
+
     app = ChechenOCRGui()
     app.mainloop()
 

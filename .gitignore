@@ -42,3 +42,12 @@ test_input.docx
 test_output_docx/
 test_output_gui_docx/
 test_input_processed_output/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Local exe tests
+test_output_exe/
+test_output_exe_mode_check/

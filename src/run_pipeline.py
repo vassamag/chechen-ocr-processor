@@ -21,6 +21,23 @@ def run_command(command: list[str], cwd: Path) -> None:
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
 
+    # In normal Python mode:
+    #   command = python script.py ...
+    #
+    # In PyInstaller .exe mode:
+    #   sys.executable is ChechenOCRProcessor.exe, not python.exe.
+    #   Therefore child scripts must be routed back through gui_app.py's
+    #   internal --run-script mode.
+    if getattr(sys, "frozen", False):
+        if len(command) >= 2 and command[0] == sys.executable and command[1].endswith(".py"):
+            script_path = cwd / command[1]
+            command = [
+                sys.executable,
+                "--run-script",
+                str(script_path),
+                *command[2:],
+            ]
+
     result = subprocess.run(
         command,
         cwd=str(cwd),
@@ -59,8 +76,7 @@ def extract_docx_to_txt(docx_path: Path, txt_path: Path) -> None:
     lines: list[str] = []
 
     for paragraph in document.paragraphs:
-        text = paragraph.text
-        lines.append(text)
+        lines.append(paragraph.text)
 
     # Also extract simple table text, if tables exist.
     for table in document.tables:
@@ -113,8 +129,8 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    project_root = Path(__file__).resolve().parents[1]
-    src_dir = project_root / "src"
+    resource_root = Path(__file__).resolve().parents[1]
+    src_dir = resource_root / "src"
 
     original_input_path = Path(args.input).resolve()
     out_dir = Path(args.out_dir).resolve()
@@ -130,7 +146,7 @@ def main() -> None:
     processed_txt = out_dir / f"{base_name}.txt"
 
     print(f"Chechen OCR TXT/DOCX Pipeline {VERSION}")
-    print(f"Project root: {project_root}")
+    print(f"Resource root: {resource_root}")
     print(f"Original input: {original_input_path}")
     print(f"Prepared input TXT: {prepared_input_path}")
     print(f"Output folder: {out_dir}")
