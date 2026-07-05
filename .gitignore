@@ -31,3 +31,8 @@ output/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local tests
+test_input.txt
+test_output/
+test_output_pipeline/
