@@ -36,3 +36,9 @@ Thumbs.db
 test_input.txt
 test_output/
 test_output_pipeline/
+
+# Local DOCX tests
+test_input.docx
+test_output_docx/
+test_output_gui_docx/
+test_input_processed_output/

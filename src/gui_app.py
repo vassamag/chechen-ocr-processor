@@ -10,7 +10,7 @@ from tkinter import filedialog, messagebox, ttk
 
 
 APP_TITLE = "Chechen OCR Processor GUI"
-APP_VERSION = "v0.1-txt"
+APP_VERSION = "v0.2-txt-docx-input"
 
 
 class ChechenOCRGui(tk.Tk):
@@ -47,15 +47,15 @@ class ChechenOCRGui(tk.Tk):
 
         subtitle = ttk.Label(
             root,
-            text="TXT post-processing version. Input: raw OCR .txt -> Output: corrected text and reports.",
+            text="TXT/DOCX post-processing version. Input: raw OCR .txt or .docx -> Output: corrected TXT and reports.",
         )
         subtitle.pack(anchor="w", pady=(2, 12))
 
         form = ttk.Frame(root)
         form.pack(fill=tk.X)
 
-        # Input TXT
-        ttk.Label(form, text="Input TXT:").grid(row=0, column=0, sticky="w", pady=4)
+        # Input TXT/DOCX
+        ttk.Label(form, text="Input TXT/DOCX:").grid(row=0, column=0, sticky="w", pady=4)
         input_entry = ttk.Entry(form, textvariable=self.input_var)
         input_entry.grid(row=0, column=1, sticky="ew", padx=6, pady=4)
         ttk.Button(form, text="Choose...", command=self.choose_input).grid(
@@ -155,12 +155,15 @@ class ChechenOCRGui(tk.Tk):
 
     def choose_input(self) -> None:
         path = filedialog.askopenfilename(
-            title="Choose raw OCR TXT file",
+            title="Choose raw OCR TXT/DOCX file",
             filetypes=[
+                ("Text and Word files", "*.txt *.docx"),
                 ("Text files", "*.txt"),
+                ("Word documents", "*.docx"),
                 ("All files", "*.*"),
             ],
         )
+
         if path:
             self.input_var.set(path)
 
@@ -212,7 +215,7 @@ class ChechenOCRGui(tk.Tk):
         if not input_text:
             messagebox.showwarning(
                 "Missing input",
-                "Please choose an input TXT file.",
+                "Please choose an input TXT or DOCX file.",
             )
             return None
 
@@ -225,10 +228,10 @@ class ChechenOCRGui(tk.Tk):
             )
             return None
 
-        if input_path.suffix.lower() != ".txt":
+        if input_path.suffix.lower() not in {".txt", ".docx"}:
             answer = messagebox.askyesno(
-                "Non-TXT file",
-                "The selected file does not have .txt extension.\nContinue anyway?",
+                "Unsupported extension",
+                "The selected file is not .txt or .docx.\nContinue anyway?",
             )
             if not answer:
                 return None

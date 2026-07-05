@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-VERSION = "v0.1-txt-gui-pipeline"
+from docx import Document
+
+
+VERSION = "v0.2-txt-docx-input"
 
 
 def run_command(command: list[str], cwd: Path) -> None:
@@ -39,18 +41,64 @@ def run_command(command: list[str], cwd: Path) -> None:
         raise RuntimeError(
             f"Command failed with exit code {result.returncode}: {' '.join(command)}"
         )
+
+
 def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def extract_docx_to_txt(docx_path: Path, txt_path: Path) -> None:
+    """
+    Extract plain paragraph text from DOCX.
+
+    This first DOCX version intentionally does not preserve formatting.
+    It extracts paragraph text and writes a UTF-8 TXT file.
+    """
+    document = Document(str(docx_path))
+
+    lines: list[str] = []
+
+    for paragraph in document.paragraphs:
+        text = paragraph.text
+        lines.append(text)
+
+    # Also extract simple table text, if tables exist.
+    for table in document.tables:
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells]
+            if any(cells):
+                lines.append("\t".join(cells))
+
+    txt_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def prepare_input_file(input_path: Path, out_dir: Path, base_name: str) -> Path:
+    suffix = input_path.suffix.lower()
+
+    if suffix == ".txt":
+        return input_path
+
+    if suffix == ".docx":
+        extracted_txt = out_dir / f"{base_name}_extracted_from_docx.txt"
+        print(f"DOCX input detected: {input_path}")
+        print(f"Extracting DOCX text to: {extracted_txt}")
+        extract_docx_to_txt(input_path, extracted_txt)
+        return extracted_txt
+
+    raise ValueError(
+        f"Unsupported input file type: {input_path.suffix}. "
+        "Supported input types: .txt, .docx"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run Chechen OCR TXT post-processing pipeline"
+        description="Run Chechen OCR TXT/DOCX post-processing pipeline"
     )
     parser.add_argument(
         "--input",
         required=True,
-        help="Input raw OCR TXT file",
+        help="Input raw OCR file. Supported: .txt, .docx",
     )
     parser.add_argument(
         "--out-dir",
@@ -68,20 +116,23 @@ def main() -> None:
     project_root = Path(__file__).resolve().parents[1]
     src_dir = project_root / "src"
 
-    input_path = Path(args.input).resolve()
+    original_input_path = Path(args.input).resolve()
     out_dir = Path(args.out_dir).resolve()
     base_name = args.base_name
 
-    if not input_path.exists():
-        raise FileNotFoundError(f"Input file not found: {input_path}")
+    if not original_input_path.exists():
+        raise FileNotFoundError(f"Input file not found: {original_input_path}")
 
     ensure_dir(out_dir)
 
+    prepared_input_path = prepare_input_file(original_input_path, out_dir, base_name)
+
     processed_txt = out_dir / f"{base_name}.txt"
 
-    print(f"Chechen OCR TXT Pipeline {VERSION}")
+    print(f"Chechen OCR TXT/DOCX Pipeline {VERSION}")
     print(f"Project root: {project_root}")
-    print(f"Input TXT: {input_path}")
+    print(f"Original input: {original_input_path}")
+    print(f"Prepared input TXT: {prepared_input_path}")
     print(f"Output folder: {out_dir}")
     print(f"Processed TXT: {processed_txt}")
 
@@ -93,7 +144,7 @@ def main() -> None:
         [
             sys.executable,
             "process_text.py",
-            str(input_path),
+            str(prepared_input_path),
             "--output",
             str(processed_txt),
         ],
@@ -105,7 +156,7 @@ def main() -> None:
     review_csv = out_dir / f"{base_name}_review_placeholder.csv"
 
     # final_qa_report.py expects a review CSV argument.
-    # For the simple TXT GUI version, we create a tiny placeholder CSV.
+    # For the simple GUI version, we create a tiny placeholder CSV.
     if not review_csv.exists():
         review_csv.write_text("decision\n", encoding="utf-8")
 
@@ -140,23 +191,32 @@ def main() -> None:
 
     # Step 4: write a small manifest.
     manifest = out_dir / f"{base_name}_manifest.txt"
+
+    created_files = [
+        f"- {processed_txt.name}",
+        f"- {base_name}_raw_ocr.txt",
+        f"- {base_name}_corrections.txt",
+        f"- {base_name}_suspicious.txt",
+        f"- {final_qa_report.name}",
+        f"- {suspicious_contexts.name}",
+        f"- {suspicious_contexts.with_suffix('.csv').name}",
+        f"- {manifest.name}",
+    ]
+
+    if original_input_path.suffix.lower() == ".docx":
+        created_files.insert(0, f"- {prepared_input_path.name}")
+
     manifest.write_text(
         "\n".join(
             [
-                f"Chechen OCR TXT Pipeline {VERSION}",
+                f"Chechen OCR TXT/DOCX Pipeline {VERSION}",
                 "",
-                f"Input TXT: {input_path}",
+                f"Original input: {original_input_path}",
+                f"Prepared input TXT: {prepared_input_path}",
                 f"Output folder: {out_dir}",
                 "",
                 "Created files:",
-                f"- {processed_txt.name}",
-                f"- {base_name}_raw_ocr.txt",
-                f"- {base_name}_corrections.txt",
-                f"- {base_name}_suspicious.txt",
-                f"- {final_qa_report.name}",
-                f"- {suspicious_contexts.name}",
-                f"- {suspicious_contexts.with_suffix('.csv').name}",
-                f"- {manifest.name}",
+                *created_files,
             ]
         ),
         encoding="utf-8",
