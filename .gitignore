@@ -1,53 +1,15 @@
-# Python
-venv/
-.venv/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-
-# Local OCR data
-input/
-output/
-
-# Source scans / documents / generated text
-*.docx
-*.pdf
-*.jpg
-*.jpeg
-*.png
-*.tif
-*.tiff
-
-# Logs and temporary files
-*.log
-*.tmp
-*.bak
-*_backup*
-
-# OS / IDE
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
-
-# Local tests
-test_input.txt
-test_output/
-test_output_pipeline/
-
-# Local DOCX tests
-test_input.docx
-test_output_docx/
-test_output_gui_docx/
-test_input_processed_output/
-
-# PyInstaller build artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
 build/
 dist/
-*.spec
+.venv/
+venv/
 
-# Local exe tests
-test_output_exe/
-test_output_exe_mode_check/
+# Book text / OCR output -- see tests/golden/data/.gitignore for the
+# authoritative rule; this is a repo-wide backstop in case similar
+# data ever gets placed elsewhere by mistake.
+output/

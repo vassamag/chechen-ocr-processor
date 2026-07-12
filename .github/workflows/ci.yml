@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Golden-file regression (tests/golden/) is intentionally NOT run here.
+# It needs the actual book text (raw OCR dump + manually-proofread
+# DOCX), which is excluded from this repo per the project's data
+# policy (see tests/golden/data/.gitignore) and only exists on the
+# maintainer's local machine. Decision: for a single-maintainer
+# project, running it manually before merging a change that touches
+# the correction pipeline is enough --
+#
+#     pytest tests/golden/ -v -m golden
+#
+# -- and isn't worth standing up private cloud storage / a private
+# data repo just to automate. Revisit this if more contributors join
+# or local runs start getting skipped in practice.
+
+jobs:
+  lint-and-test:
+    name: Lint, type-check, unit tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install package + dev/optional dependencies
+        run: |
+          pip install -e ".[dev,tesseract,docx,pdf]"
+          pip install ruff mypy
+
+      - name: Install Tk + Xvfb (for GUI tests)
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format check (ruff)
+        run: ruff format --check .
+
+      - name: Type-check (mypy)
+        run: mypy chechen_ocr/
+
+      - name: Unit tests
+        # Golden-file tests are excluded by default (see pyproject.toml
+        # addopts) -- run manually, see note at the top of this file.
+        run: pytest tests/ -v --tb=short
+
+      - name: GUI tests (under Xvfb)
+        # Unlike golden-file tests, these need no private data -- just
+        # a display, which Xvfb provides headlessly in CI.
+        run: xvfb-run -a pytest tests/gui/ -v -m gui --tb=short

@@ -1,0 +1,29 @@
+# known_suspicious_candidates.yaml
+#
+# Known OCR-damaged word forms with a single, already-verified
+# correction, for cases where the dictionary-candidate corrector
+# alone cannot disambiguate (e.g. because the damaged reading also
+# happens to parse as a plausible word, or the damage spans more
+# than one lookalike substitution).
+#
+# Extracted from chechen_ocr/suspicious.py. Each entry lists one or
+# more suggested candidates for a human reviewer -- these are NOT
+# auto-applied, only surfaced in the suspicious-word / review-table
+# output.
+known_suspicious_candidates:
+  "Аълбикин": ["Аьлбикин"]
+  "Маьлха-Аъзнис": ["Маьлха-Аьзнис"]
+  "бТарлаех": ["бӀарлаех"]
+  "ДиЙЦинчо": ["Дийцинчо"]
+  "ЮьхыШаьржа": ["ЮьхьӀаьржа"]
+  "юьхыШаьржа": ["юьхьӀаьржа"]
+
+# Words/names known to be correct despite looking "suspicious" to
+# the pattern-based heuristics (e.g. proper nouns with an internal
+# hyphen-capital, or filenames that legitimately contain digits).
+whitelist:
+  - "JPG-файлов"
+  - "Маьлха-Аьзни"
+  - "Маьлха-Аьзнис"
+  - "Тату-Хепас"
+  - "Тату-Хепин"
