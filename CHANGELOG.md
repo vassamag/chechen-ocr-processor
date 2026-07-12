@@ -11,6 +11,36 @@ rather than git tags — see `docs/OCR_PROCESSOR_V5_4_FINAL_STATUS.md`
 for that era's state. 6.0.0 is the first version with a real package
 structure, semantic versioning, and this changelog.
 
+## [0.2.5]
+
+CI advanced past the 0.2.4 fix (lint/format/mypy all passed) but
+still failed, now at the "Unit tests" step, uniformly on all 3 Python
+versions again ("exit code 2" this time, not 1 -- a different failure
+than 0.2.4's).
+
+### Fixed
+- Root cause: `tests/golden/test_manual_proofread_regression.py` does
+  `from tests.golden.golden_diff import run_golden_diff` -- an
+  absolute import that requires the repo root to be on `sys.path` so
+  `tests` resolves as a top-level package. `pyproject.toml`'s
+  `[tool.pytest.ini_options]` was missing `pythonpath = ["."]`, which
+  is what makes that happen automatically. This exact setting was
+  already known to matter for this maintainer's other project
+  (Windows pytest path issues) but hadn't been carried over into this
+  one -- it must have been lost somewhere during the repository
+  recreation. Every local verification in this session had been
+  masking it by manually prefixing `PYTHONPATH=.` on every pytest
+  invocation, which CI's plain `pytest tests/ -v --tb=short` doesn't
+  do.
+- Added `pythonpath = ["."]` to `[tool.pytest.ini_options]`. Verified
+  by reproducing the CI command with `PYTHONPATH` explicitly unset
+  (not just omitted -- actually cleared from the environment) before
+  and after the fix.
+- Second lesson on top of 0.2.4's: convenience flags used habitually
+  in every local test run (like `PYTHONPATH=.`) can mask exactly the
+  kind of environment-dependent bug CI exists to catch. Worth
+  periodically running the *exact* CI command, unmodified, locally.
+
 ## [0.2.4]
 
 CI failed on all 3 Python versions (3.10/3.11/3.12) uniformly after
