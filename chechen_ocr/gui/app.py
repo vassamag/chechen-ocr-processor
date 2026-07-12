@@ -250,12 +250,20 @@ class App:
 
     def _build_layout(self) -> None:
         # Outer frame: fills the whole window edge-to-edge with no
-        # padding, colored to match the root window's own default
+        # padding, colored to match the ttk theme's own default frame
         # background -- this IS the border ("фоновый шов" made
-        # intentional, per project discussion), now set to match
-        # exactly what was showing through before rather than an
-        # approximated hex guess.
-        border_frame = tk.Frame(self.root, background=self.root.cget("background"))
+        # intentional, per project discussion). Reading this from
+        # ttk.Style() rather than the raw Tk root background
+        # (self.root.cget("background")) matters in practice: on at
+        # least one real Windows machine the raw root background
+        # rendered as a saturated accent color, not the neutral gray
+        # seen in this project's own Linux/Xvfb testing -- ttk's own
+        # frame background is what the content actually uses, so it's
+        # the more reliable color to match against, and is what this
+        # falls back to if the style lookup ever comes back empty.
+        style = ttk.Style()
+        border_color = style.lookup("TFrame", "background") or self.root.cget("background")
+        border_frame = tk.Frame(self.root, background=border_color)
         border_frame.pack(fill="both", expand=True)
 
         # Inner content frame: everything else lives here, inset from

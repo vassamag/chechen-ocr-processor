@@ -11,6 +11,31 @@ rather than git tags — see `docs/OCR_PROCESSOR_V5_4_FINAL_STATUS.md`
 for that era's state. 6.0.0 is the first version with a real package
 structure, semantic versioning, and this changelog.
 
+## [0.3.1]
+
+Raised via project discussion, with a screenshot: on a real Windows
+machine, 0.2.2's border color (`self.root.cget("background")`, the
+raw Tk root background) rendered as a saturated teal/blue accent
+color across the whole app -- not the neutral gray this project's own
+Linux/Xvfb testing had shown throughout every earlier round of this
+feature. A real, environment-specific rendering difference that local
+testing here structurally cannot catch (no access to a real Windows
+box), unlike the CI-only failures in 0.2.4-0.2.6 which were at least
+reproducible in a fresh Linux environment.
+
+### Changed
+- Border color now reads from `ttk.Style().lookup("TFrame",
+  "background")` (the theme's actual frame background -- what the
+  content behind the border literally uses) instead of the raw Tk
+  root background, falling back to the old behavior only if that
+  lookup ever comes back empty.
+- Verified this doesn't break anything and still renders a visible,
+  neutral border in this project's own Linux/Xvfb testing -- but that
+  verification could not have caught 0.2.2's actual failure mode
+  either, so this fix needs the maintainer's confirmation on the real
+  Windows machine before being considered actually resolved, not just
+  "should be better in theory."
+
 ## [0.3.0]
 
 Item 10 from the GUI usability discussion, minimal integration (per
