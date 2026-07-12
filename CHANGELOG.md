@@ -11,6 +11,42 @@ rather than git tags — see `docs/OCR_PROCESSOR_V5_4_FINAL_STATUS.md`
 for that era's state. 6.0.0 is the first version with a real package
 structure, semantic versioning, and this changelog.
 
+## [0.2.6]
+
+CI advanced past 0.2.5 (collection succeeded) but failed again, at
+the same "Unit tests" step, on 5 tests in `tests/io/test_pdf_reader.py`.
+
+### Fixed
+- Root cause: same class of bug as 0.2.4/0.2.5, a third instance --
+  `pdf2image` (installed via the `.[pdf]` extra) is only a thin
+  Python wrapper around the `poppler` command-line tools
+  (`pdftoppm`/`pdftocairo`/`pdfinfo`); it does nothing without the
+  system package `poppler-utils` installed separately, which the CI
+  workflow's apt-get step never included. Verified by reproducing
+  locally with poppler's binaries hidden from `PATH` (not just
+  "not run" -- actually absent) before and after the fix; got the
+  exact same 5 failures and the exact same
+  `PDFInfoNotInstalledError: Unable to get page count. Is poppler
+  installed and in PATH?` CI reported.
+- Added `poppler-utils` to the CI apt-get install step.
+- Proactively added `tesseract-ocr` and `tesseract-ocr-rus` too, even
+  though no current test invokes the real Tesseract binary (only its
+  error paths, on missing/corrupt files, are exercised) -- the same
+  gap (Python wrapper installed, system binary not) exists for
+  `pytesseract` and would fail the same way the moment a real-
+  recognition test is added. Caught proactively this time instead of
+  reactively.
+- Third time this exact failure MODE (works locally, fails in CI)
+  showed up in three consecutive versions (0.2.4: missing type stubs,
+  0.2.5: missing pythonpath config, 0.2.6: missing system packages) --
+  all traced to the same underlying cause: a long-lived local dev
+  environment accumulating things (stub packages, system binaries)
+  that were never actually declared as project requirements anywhere.
+  None of this would keep recurring if local verification were run in
+  a genuinely fresh environment before pushing, rather than the
+  existing dev setup -- noted as a real process gap, not just three
+  unrelated bugs.
+
 ## [0.2.5]
 
 CI advanced past the 0.2.4 fix (lint/format/mypy all passed) but

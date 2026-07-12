@@ -43,8 +43,21 @@ jobs:
           pip install -e ".[dev,tesseract,docx,pdf]"
           pip install ruff mypy
 
-      - name: Install Tk + Xvfb (for GUI tests)
-        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
+      - name: Install Tk + Xvfb + Poppler + Tesseract (for GUI, PDF, and OCR tests)
+        # python3-tk/xvfb: needed to actually run the Tkinter GUI
+        # under a headless display. poppler-utils: pdf2image (the
+        # .[pdf] extra) is only a thin wrapper around the poppler
+        # command-line tools (pdftoppm/pdftocairo) -- it does nothing
+        # useful without the system package installed too. Same logic
+        # for tesseract-ocr: pytesseract (the .[tesseract] extra) is
+        # only a wrapper around the tesseract binary. No current test
+        # actually invokes real OCR through it (the existing
+        # TesseractEngine tests only exercise error paths on missing/
+        # corrupt files), but installing it now avoids the same class
+        # of CI-only failure the moment a real-recognition test is
+        # added later. tesseract-ocr-rus matches this project's
+        # actual language.
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb poppler-utils tesseract-ocr tesseract-ocr-rus
 
       - name: Lint (ruff)
         run: ruff check .
