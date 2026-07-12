@@ -11,6 +11,71 @@ rather than git tags — see `docs/OCR_PROCESSOR_V5_4_FINAL_STATUS.md`
 for that era's state. 6.0.0 is the first version with a real package
 structure, semantic versioning, and this changelog.
 
+## [0.3.0]
+
+Item 10 from the GUI usability discussion, minimal integration (per
+project decision: ship the core mechanism and its GUI wiring first
+without new visual elements, confirm it behaves correctly on real
+documents, then layer on locked-line highlighting / an editable page-
+number field / auto-resume-position afterward, once the underlying
+mechanism is proven rather than guessed at).
+
+Raised via project discussion: for large multi-page documents, a
+person reviewing/correcting flagged words needs their work to survive
+being re-processed later (e.g. after a corrector improvement), even
+if only part of a page was actually touched.
+
+### Added
+- New module `chechen_ocr/review/session.py`: `ReviewSession` /
+  `BlockRecord` / `LineRecord` plus supporting functions. Design,
+  agreed in discussion beforehand:
+  - A block's identity is its ordinal position in the document (or a
+    source photo filename, when available) -- NOT the page number
+    printed on it, since that can be missing or misread (this
+    project has repeated real examples of both). The page number is
+    a separate, editable field on the block, independent of its
+    identity.
+  - Tracking is per LINE, not per block: each line stores both what
+    the corrector most recently produced and what's currently saved.
+    An unchanged line is safe to reprocess; a changed one (a person
+    edited it) is left alone by any future automated run, regardless
+    of corrector version -- verified with a test matching the exact
+    scenario raised in discussion, half a page edited and half not,
+    each line tracked independently within the same block.
+  - Session state is a JSON sidecar next to the source file
+    (`<file>.review_session.json`), never mixed into the document
+    itself.
+- GUI wiring (single-file .txt/.docx mode only for now -- batch mode
+  and image/PDF inputs are unaffected):
+  - Process: loads an existing session for the file if one exists,
+    reprocesses only its untouched lines, and saves it back; builds a
+    fresh session on first run.
+  - Save Edits: reconciles the session with whatever's currently in
+    the Corrected Text box, so a manual edit is recognized as such
+    the next time Process runs, even without closing the app.
+  - Session mutation happens only on the main thread (via the
+    existing JobDone/message-queue pattern this app already uses for
+    every other background-thread result) -- the background worker
+    returns the session rather than assigning `self.review_session`
+    directly, avoiding a cross-thread state-mutation bug that would
+    have been easy to introduce here.
+- New end-to-end GUI test drives the actual App instance through
+  Process -> manual edit -> Save Edits -> Process again, and confirms
+  the edit survived while the untouched line was refreshed by the
+  corrector -- not just the underlying module's unit tests in
+  isolation.
+
+### Not yet done (deferred per project decision, see intro above)
+- No visual indication in the GUI of which lines are "locked" by a
+  previous edit.
+- No editable page-number/verified-status field on a block.
+- No auto-resume to `last_position` on reopening a file (the field
+  exists in `ReviewSession` and is wired through save/load, just not
+  surfaced or acted on by the GUI yet).
+- Batch mode (directory of images) doesn't use this yet -- each file
+  in a batch already has a natural block identity (its filename), but
+  wiring it through `BatchProcessor` wasn't part of this pass.
+
 ## [0.2.6]
 
 CI advanced past 0.2.5 (collection succeeded) but failed again, at

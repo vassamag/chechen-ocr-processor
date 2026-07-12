@@ -491,3 +491,41 @@ def test_suspicious_words_table_rows_have_alternating_tags(app, tmp_path):
 
     tags_seen = {app.tree.item(row_id, "tags")[0] for row_id in row_ids[:2]}
     assert tags_seen == {"evenrow", "oddrow"}
+
+
+def test_review_session_survives_a_reprocess_after_manual_edit(app, tmp_path):
+    # End-to-end version of the item-10 design ("половина страницы
+    # отредактирована, половина нет") -- Process, manually edit part
+    # of the Corrected Text box, Save Edits, Process again, and check
+    # the edit is still there while an untouched line got refreshed.
+    test_file = tmp_path / "input.txt"
+    test_file.write_text("90\n\nцIе биъ\nхIара кIант", encoding="utf-8")
+
+    app.current_path = test_file
+    app.is_batch = False
+    app.ocr_engine_var.set("openai_vision")
+    app.process_button.config(state="normal")
+    app.on_process()
+    app._on_job_done(_wait_for_job(app))
+
+    assert app.review_session is not None
+    session_file = test_file.with_suffix(test_file.suffix + ".review_session.json")
+    assert session_file.exists()
+
+    # Manually edit just the first line, leave the second untouched.
+    edited_text = app.doc.corrected_text.replace("цӀе биъ", "цӀе биъ (правка вручную)")
+    app.corrected_text.configure(state="normal")
+    app.corrected_text.delete("1.0", "end")
+    app.corrected_text.insert("1.0", edited_text)
+    app.on_save_corrected_text()
+
+    assert app.review_session.blocks[0].lines[0].is_edited is True
+
+    # Re-process the same file -- the edit must survive untouched.
+    app.on_process()
+    app._on_job_done(_wait_for_job(app))
+
+    assert "цӀе биъ (правка вручную)" in app.doc.corrected_text
+    # the untouched second line should still be present, refreshed by
+    # the corrector (хIара -> хӀара via the always-on homoglyph fix)
+    assert "хӀара кӀант" in app.doc.corrected_text

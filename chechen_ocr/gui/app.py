@@ -45,6 +45,13 @@ from ..processor import ChechenOcrProcessor, ProcessedDocument
 from ..review import apply_review_rows, build_review_rows
 from ..review.apply_review_table import WORD_CHARS
 from ..review.schema import REVIEW_CSV_FIELDNAMES
+from ..review.session import (
+    ReviewSession,
+    build_session_from_text,
+    reprocess_session,
+    session_path_for,
+    sync_session_with_edited_text,
+)
 from .processing import JobDone, LogMessage, QueueLogHandler, run_in_background
 from .review_model import TREEVIEW_COLUMNS, VALID_DECISIONS, ReviewTableModel
 
@@ -149,6 +156,10 @@ class App:
         self.doc: ProcessedDocument | None = None
         self.batch_result: BatchResult | None = None
         self.review_model: ReviewTableModel | None = None
+        # Item-10 persistence/resume support (single-file, non-batch
+        # mode only, for a document that has detectable page-marker
+        # blocks -- see review/session.py for the design).
+        self.review_session: ReviewSession | None = None
 
         self.rules_dir_var = tk.StringVar(value="")
         self.tesseract_cmd_var = tk.StringVar(value="")
@@ -612,9 +623,56 @@ class App:
                 doc = processor.process_pdf(path, dpi=dpi)
             else:
                 doc = processor.process_image(path)
-            return ("single", doc)
+
+            session: ReviewSession | None = None
+            if suffix in (".txt", ".docx"):
+                doc, session = self._apply_review_session(path, doc, processor, engine_name_value)
+
+            return ("single", (doc, session))
 
         run_in_background(work, self._message_queue)
+
+    def _apply_review_session(
+        self,
+        path: Path,
+        doc: ProcessedDocument,
+        processor: ChechenOcrProcessor,
+        ocr_engine_name: str | None,
+    ) -> tuple[ProcessedDocument, ReviewSession]:
+        """
+        Item 10 (minimal integration): reconciles this Process run
+        with any existing review session for `path`, so lines a person
+        already edited in a previous session are never silently
+        overwritten by a fresh correction pass -- only genuinely
+        untouched lines get refreshed. Runs on the background thread
+        (same as the rest of `work()`) -- deliberately returns the
+        session rather than assigning to `self.review_session` here,
+        so the actual state mutation happens on the main thread in
+        `_on_job_done`, consistent with how every other background-
+        thread result in this app is handled.
+        """
+        session_path = session_path_for(path)
+        if session_path.exists():
+            try:
+                existing = ReviewSession.load(session_path)
+            except (OSError, ValueError, KeyError) as exc:
+                self._append_log(f"WARNING: could not load review session ({exc}); starting fresh.")
+                existing = build_session_from_text(doc.corrected_text)
+            else:
+                existing = reprocess_session(existing, processor, ocr_engine_name)
+        else:
+            existing = build_session_from_text(doc.corrected_text)
+
+        existing.save(session_path)
+
+        reconciled_text = "\n".join(block.text for block in existing.blocks)
+        reconciled_doc = ProcessedDocument(
+            corrected_text=reconciled_text,
+            raw_text=doc.raw_text,
+            corrections=doc.corrections,
+            suspicious=doc.suspicious,
+        )
+        return reconciled_doc, existing
 
     def on_tree_select(self, _event: Any = None) -> None:
         if self.review_model is None:
@@ -708,6 +766,11 @@ class App:
         way applying reviewed CSV changes is. If you want the
         suspicious-word list to reflect the edit, re-process the
         source file instead.
+
+        Item 10 (minimal integration): if a review session is active
+        for the current file, also reconciles it with the edit here,
+        so a future Process run on the same file knows which lines
+        were touched by a person and leaves them alone.
         """
         if self.doc is None:
             messagebox.showwarning("Nothing to save", "Process a file first.")
@@ -720,6 +783,9 @@ class App:
             corrections=self.doc.corrections,
             suspicious=self.doc.suspicious,
         )
+        if self.review_session is not None and self.current_path is not None:
+            self.review_session = sync_session_with_edited_text(self.review_session, new_text)
+            self.review_session.save(session_path_for(self.current_path))
         if self.review_model is not None:
             self._refresh_corrected_text_highlights(
                 pending_words=[item.row.word for item in self.review_model.items],
@@ -830,10 +896,11 @@ class App:
         if kind == "batch":
             self.batch_result = result
             self.doc = result.doc
+            self.review_session = None  # item 10 is single-file-only for now
             self._set_per_file(result)
         else:
             self.batch_result = None
-            self.doc = result
+            self.doc, self.review_session = result
 
         self._set_text_widget(self.corrected_text, self.doc.corrected_text, keep_editable=True)
         self._set_suspicious(self.doc)
