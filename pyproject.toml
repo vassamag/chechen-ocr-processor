@@ -20,7 +20,7 @@ version = {attr = "chechen_ocr.__version__"}
 tesseract = ["pytesseract>=0.3.10", "Pillow>=10.0"]
 docx = ["python-docx>=1.0"]
 pdf = ["pdf2image>=1.17"]
-dev = ["pytest>=8.0", "ruff>=0.15", "mypy>=1.11"]
+dev = ["pytest>=8.0", "ruff>=0.15", "mypy>=1.11", "types-PyYAML>=6.0"]
 
 [project.scripts]
 chechen-ocr-text = "chechen_ocr.cli:main_text"

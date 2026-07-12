@@ -11,6 +11,147 @@ rather than git tags — see `docs/OCR_PROCESSOR_V5_4_FINAL_STATUS.md`
 for that era's state. 6.0.0 is the first version with a real package
 structure, semantic versioning, and this changelog.
 
+## [0.2.4]
+
+CI failed on all 3 Python versions (3.10/3.11/3.12) uniformly after
+pushing 0.2.3, with a bare "Process completed with exit code 1" and
+no other visible detail in the summary.
+
+### Fixed
+- Root cause: `mypy` requires type stubs for `yaml` (used in
+  `dictionaries.py`), and the `dev` extra in `pyproject.toml` didn't
+  declare `types-PyYAML`. This was silently masked in the maintainer's
+  local dev environment (stubs had been installed there earlier in
+  the session, unrelated to this project's own dependency list) but
+  fails immediately in any genuinely fresh install -- which is exactly
+  what CI does on every run. Reproduced by installing into a brand
+  new venv from scratch (not just re-running tests in an
+  already-set-up environment) -- that's the only way this class of
+  bug reliably surfaces locally.
+- Added `types-PyYAML>=6.0` to the `dev` extra.
+- Lesson for future dependency changes: verify in a clean venv, not
+  just the existing dev environment, since a long-lived local
+  environment can accumulate packages that mask missing declarations.
+
+## [0.2.3]
+
+### Changed
+- `APP_BORDER_THICKNESS`: 3 -> 9, per project discussion.
+
+### Fixed
+- The previous edit (0.2.2) accidentally left a duplicated comment
+  block and a duplicate `APP_BORDER_THICKNESS = 3` line in the source
+  (harmless -- the second assignment just silently won -- but sloppy).
+  Cleaned up to a single constant with one comment block.
+
+## [0.2.2]
+
+Raised via project discussion: the border color from 0.2.1
+(`APP_BORDER_COLOR = "#8a8f98"`) was a guess, not a match to what the
+"background seam" actually looked like before it became intentional.
+
+### Changed
+- Border color is no longer a hardcoded hex constant. It's now read
+  from the root window's own default background at runtime
+  (`self.root.cget("background")`), which is exactly where the seam's
+  color came from in the first place -- guaranteed to match, rather
+  than approximated, and correctly follows system/theme defaults
+  instead of a value picked for one specific system.
+  `APP_BORDER_THICKNESS` remains a plain constant (unaffected).
+
+## [0.2.1]
+
+Follow-up polish after first real use of 0.2.0, raised via project
+discussion (a screenshot-driven back-and-forth to pin down an
+intermittent thin light line between the notebook and the status bar
+-- named "фоновый шов" / "background seam" in discussion once its
+cause was identified, for faster reference going forward).
+
+### Fixed
+- The "background seam": a `pady=(0, 14)` gap under the notebook let
+  the root window's own background color show through as a thin line
+  above the status bar. Root cause, not just this one seam: the
+  notebook and status bar had inconsistent horizontal insets from the
+  window edge too (notebook had padx=14, status bar had none),
+  described in discussion as the border not going "all the way
+  around."
+- Turned that into an intentional design element instead of removing
+  it: added an outer border frame (constant color/thickness,
+  `APP_BORDER_COLOR` / `APP_BORDER_THICKNESS` in `gui/app.py` --
+  code-only per project discussion, no Settings UI for it) that wraps
+  the entire window, with all content inset from it equally on every
+  side.
+- Suspicious Words table: word/reason/candidates/replacement columns
+  are now center-aligned (previously left-aligned with no padding,
+  which read as "stuck to the edge").
+- Notebook tabs (Log/Corrected Text/Suspicious Words/...) had no
+  spacing between them and visibly shifted size when clicked (ttk's
+  default "sunken" selected-tab styling) -- added consistent padding
+  via `ttk.Style` for both selected and unselected states so the tab
+  no longer visibly moves on click.
+
+## [0.2.0]
+
+Ten GUI usability issues raised via project discussion after using
+the desktop app for the first time on a real docx file. Addressed
+eight of them; one (window title bar color) is OS-level chrome and
+was left as-is on purpose; the tenth (a persistence/resume system for
+partially-reviewed large documents) was designed in discussion but
+not yet implemented -- see the design notes below, planned for a
+following release.
+
+### Fixed
+- Toolbar and text-area padding was too tight (content touching the
+  window edge) -- increased throughout (8px -> 12-14px).
+- Settings dialog opened at an OS-default screen position, sometimes
+  landing outside the main app window -- now centers itself over the
+  parent window on open.
+- The "Source" selector's labels named specific technologies
+  ("Scan (Tesseract)" / "Pre-recognized (Vision)") when the engine
+  behind either choice can be anything -- relabeled to describe the
+  nature of the input instead ("Scanned image" / "Recognized text").
+- No visible confirmation when processing finished -- a "Done." line
+  only appeared in the Log tab, easy to miss. Added a persistent
+  status bar at the bottom of the window, updated on process start,
+  completion (with correction/flagged-word counts), and export.
+- Suspicious Words table columns had no visual separation and text
+  sat flush against the column edge -- added per-column anchoring
+  (center for id/page/decision, left-aligned with padding for text
+  columns) and increased row height.
+- The Page column was empty for every row when processing a DOCX
+  using the bold-digit-marker-per-page convention (e.g.
+  combined_11_236_one_page_per_sheet.docx) -- `review/schema.py`'s
+  `build_page_index()` only recognized the
+  "===== Страница N | file.jpg =====" service-header format used by
+  `ocr_book_directory.py`-style output. Added a fallback that detects
+  standalone-digit-only lines (the bold marker itself doesn't survive
+  DOCX-to-plain-text flattening, but the line does).
+- No obvious way to choose where to save the finished file -- "Save
+  Edits" only commits the Corrected Text textbox into memory, it
+  never writes to disk, and the actual file-save (Export TXT/DOCX/
+  review CSV, all of which already used a proper save-location
+  dialog) was buried in the File menu. Added a visible "Export..."
+  button directly in the main toolbar.
+
+### Design note: page-block identity for large-document review (item 10)
+For documents too large to fully review in one sitting, agreed
+design (not yet implemented):
+- A block's identity for tracking purposes is its position in the
+  document (or source photo filename, when available) -- NOT the
+  page number printed on it, since that can be missing or misread
+  (this project's own source material has repeated real examples of
+  both). The page number is a separate, editable/flaggable field on
+  the block, independent of its identity.
+- Per-line tracking, not per-page: for each line, store what the
+  corrector produced and what's currently saved. Unchanged lines
+  (saved == corrector output) are safe to reprocess on a future run
+  (e.g. after a corrector improvement); changed lines (a person edited
+  them) are left untouched by any future automated run, regardless of
+  version.
+- The last edit position is saved and restored on reopening the file,
+  so review can resume where it left off rather than starting from
+  the top every time.
+
 ## [0.1.0]
 
 Version numbering restarts here, at the new repository
