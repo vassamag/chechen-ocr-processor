@@ -23,6 +23,8 @@ import time
 
 import pytest
 
+from chechen_ocr.gui.review_model import TREEVIEW_COLUMNS
+
 pytestmark = pytest.mark.gui
 
 
@@ -99,6 +101,44 @@ def test_process_single_text_file(app, tmp_path):
     assert app.doc is not None
     assert "цӀе" in app.doc.corrected_text  # "цIе" (Latin I) corrected to canonical Ӏ
     assert len(app.tree.get_children()) >= 1
+
+
+def test_status_bar_shows_completion_summary(app, tmp_path):
+    test_file = tmp_path / "input.txt"
+    test_file.write_text("Цхьа стаг вара, цуьнан цIе Аълбикин хилла.", encoding="utf-8")
+
+    app.current_path = test_file
+    app.is_batch = False
+    app.process_button.config(state="normal")
+    app.on_process()
+    app._on_job_done(_wait_for_job(app))
+
+    status_text = app.status_bar.cget("text")
+    assert "Done" in status_text
+    assert "correction" in status_text
+    assert "flagged" in status_text
+
+
+def test_page_column_populated_for_standalone_digit_marker_convention(app, tmp_path):
+    # Matches the bold-digit-marker-per-page DOCX convention (bold
+    # formatting itself doesn't survive plain-text extraction, but the
+    # standalone digit line does -- see review/schema.py's fallback).
+    test_file = tmp_path / "input.txt"
+    test_file.write_text(
+        "90\n\nЦхьа стаг вара, цуьнан цIе Аълбикин хилла.\n\n91\n\nВукхо дийцира.",
+        encoding="utf-8",
+    )
+
+    app.current_path = test_file
+    app.is_batch = False
+    app.process_button.config(state="normal")
+    app.on_process()
+    app._on_job_done(_wait_for_job(app))
+
+    assert len(app.tree.get_children()) >= 1
+    assert app.review_model.items[0].row.page == "90"
+    values = app.tree.item(app.tree.get_children()[0], "values")
+    assert values[TREEVIEW_COLUMNS.index("page")] == "90"
 
 
 def test_review_edit_and_apply(app, tmp_path):

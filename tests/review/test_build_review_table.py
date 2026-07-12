@@ -33,6 +33,22 @@ def test_extracts_page_and_image_from_service_headers():
     assert rows[0].image_file == "IMG-0001.jpg"
 
 
+def test_extracts_page_from_standalone_digit_line_fallback():
+    # DOCX files using the bold-digit-marker-per-page convention (e.g.
+    # combined_11_236_one_page_per_sheet.docx) lose the bold formatting
+    # once flattened to plain text by io/docx_reader.py, but the
+    # standalone number line itself survives -- this is the fallback
+    # that should pick it up when no "===== Страница =====" headers
+    # are present at all.
+    raw_text = "90\n\nЦхьа Аълбикин хилла.\n\n91\n\nВукхо дийцира."
+    corrected_text = raw_text
+    suspicious = [SuspiciousWord(word="Аълбикин", reason="known OCR pattern", candidates=[])]
+
+    rows = build_review_rows(raw_text, corrected_text, suspicious)
+
+    assert rows[0].page == "90"
+
+
 def test_word_not_found_anywhere_is_noted():
     raw_text = "Цхьа стаг вара."
     corrected_text = raw_text

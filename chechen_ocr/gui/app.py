@@ -35,7 +35,7 @@ import re
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Any
+from typing import Any, Literal
 
 from .. import __version__
 from ..batch import BatchProcessor, BatchResult
@@ -53,6 +53,16 @@ logger = logging.getLogger(__name__)
 SUSPICIOUS_TAG = "suspicious_highlight"
 APPLIED_TAG = "applied_highlight"
 
+# Simple, code-only constant for the outer border-frame thickness --
+# change directly to adjust; no Settings UI exposure was wanted for
+# this. The color is NOT a fixed constant: it's read from the root
+# window's own default background at runtime (see _build_layout),
+# matching exactly the color that was showing through as the
+# "background seam" before the border became an intentional element
+# -- a hardcoded hex guess wouldn't reliably match across different
+# systems/themes the way this does.
+APP_BORDER_THICKNESS = 9
+
 SUPPORTED_FILETYPES = [
     ("Supported files", "*.txt *.docx *.pdf *.jpg *.jpeg *.png *.tif *.tiff *.bmp *.gif"),
     ("All files", "*.*"),
@@ -60,7 +70,7 @@ SUPPORTED_FILETYPES = [
 
 
 class SettingsDialog(tk.Toplevel):
-    def __init__(self, parent: tk.Misc, app: App):
+    def __init__(self, parent: tk.Tk, app: App):
         super().__init__(parent)
         self.title("Settings")
         self.resizable(False, False)
@@ -101,6 +111,21 @@ class SettingsDialog(tk.Toplevel):
         ttk.Button(self, text="Close", command=self.destroy).grid(
             row=6, column=0, columnspan=2, pady=8
         )
+
+        self._center_over_parent(parent)
+
+    def _center_over_parent(self, parent: tk.Tk) -> None:
+        self.transient(parent)
+        self.update_idletasks()
+        parent_x = parent.winfo_rootx()
+        parent_y = parent.winfo_rooty()
+        parent_w = parent.winfo_width()
+        parent_h = parent.winfo_height()
+        my_w = self.winfo_reqwidth()
+        my_h = self.winfo_reqheight()
+        x = parent_x + (parent_w - my_w) // 2
+        y = parent_y + (parent_h - my_h) // 2
+        self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
 
     def _browse_rules_dir(self) -> None:
         path = filedialog.askdirectory()
@@ -213,35 +238,73 @@ class App:
         self.root.bind_all("<Control-o>", lambda _event: self.on_open_file())
 
     def _build_layout(self) -> None:
-        top = ttk.Frame(self.root, padding=8)
+        # Outer frame: fills the whole window edge-to-edge with no
+        # padding, colored to match the root window's own default
+        # background -- this IS the border ("фоновый шов" made
+        # intentional, per project discussion), now set to match
+        # exactly what was showing through before rather than an
+        # approximated hex guess.
+        border_frame = tk.Frame(self.root, background=self.root.cget("background"))
+        border_frame.pack(fill="both", expand=True)
+
+        # Inner content frame: everything else lives here, inset from
+        # the border by APP_BORDER_THICKNESS on all four sides equally.
+        content = ttk.Frame(border_frame)
+        content.pack(
+            fill="both",
+            expand=True,
+            padx=APP_BORDER_THICKNESS,
+            pady=APP_BORDER_THICKNESS,
+        )
+
+        top = ttk.Frame(content, padding=14)
         top.pack(fill="x")
         self.path_label = ttk.Label(top, text="No file selected", anchor="w")
         self.path_label.pack(side="left", fill="x", expand=True)
         self.progress = ttk.Progressbar(top, mode="indeterminate", length=140)
-        self.progress.pack(side="right", padx=8)
+        self.progress.pack(side="right", padx=12)
         self.process_button = ttk.Button(
             top, text="Process", command=self.on_process, state="disabled"
         )
         self.process_button.pack(side="right")
 
+        export_menu = tk.Menu(self.root, tearoff=False)
+        export_menu.add_command(label="Export as .txt...", command=self.on_export_txt)
+        export_menu.add_command(label="Export as .docx...", command=self.on_export_docx)
+        export_menu.add_command(label="Export review .csv...", command=self.on_export_review_csv)
+        self.export_button = ttk.Menubutton(top, text="Export...", menu=export_menu)
+        self.export_button.pack(side="right", padx=(0, 10))
+
         engine_frame = ttk.Frame(top)
-        engine_frame.pack(side="right", padx=(0, 12))
-        ttk.Label(engine_frame, text="Source:").pack(side="left", padx=(0, 4))
+        engine_frame.pack(side="right", padx=(0, 16))
+        ttk.Label(engine_frame, text="Source:").pack(side="left", padx=(0, 6))
         ttk.Radiobutton(
             engine_frame,
-            text="Scan (Tesseract)",
+            text="Scanned image",
             variable=self.ocr_engine_var,
             value="tesseract",
-        ).pack(side="left")
+        ).pack(side="left", padx=(0, 8))
         ttk.Radiobutton(
             engine_frame,
-            text="Pre-recognized (Vision)",
+            text="Recognized text",
             variable=self.ocr_engine_var,
             value="openai_vision",
         ).pack(side="left")
 
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.status_bar = ttk.Label(
+            content, text="Ready.", anchor="w", relief="sunken", padding=(10, 4)
+        )
+        self.status_bar.pack(fill="x", side="bottom")
+
+        style = ttk.Style()
+        # Space between tabs, and consistent (non-"sinking") padding
+        # in both unselected and selected states, so clicking a tab
+        # doesn't visibly shift its size/position.
+        style.configure("TNotebook.Tab", padding=(14, 8))
+        style.map("TNotebook.Tab", padding=[("selected", (14, 8))])
+
+        self.notebook = ttk.Notebook(content)
+        self.notebook.pack(fill="both", expand=True, padx=14, pady=(0, 10))
 
         self.log_text = self._make_text_tab("Log")
         self._build_corrected_text_tab()
@@ -250,8 +313,8 @@ class App:
         self._build_per_file_tab()
 
     def _make_text_tab(self, title: str) -> tk.Text:
-        frame = ttk.Frame(self.notebook, padding=6)
-        text = tk.Text(frame, wrap="word", state="disabled", padx=8, pady=6, relief="flat")
+        frame = ttk.Frame(self.notebook, padding=12)
+        text = tk.Text(frame, wrap="word", state="disabled", padx=14, pady=10, relief="flat")
         scrollbar = ttk.Scrollbar(frame, command=text.yview)
         text.configure(yscrollcommand=scrollbar.set)
         text.pack(side="left", fill="both", expand=True)
@@ -274,11 +337,11 @@ class App:
         finding them by eye in a full page of text was the whole
         problem this was added to solve (see project discussion).
         """
-        frame = ttk.Frame(self.notebook, padding=6)
+        frame = ttk.Frame(self.notebook, padding=12)
         self.notebook.add(frame, text="Corrected Text")
 
         toolbar = ttk.Frame(frame)
-        toolbar.pack(side="top", fill="x", pady=(0, 6))
+        toolbar.pack(side="top", fill="x", pady=(0, 10))
         ttk.Label(
             toolbar,
             text="Editable -- fix anything the Suspicious Words table couldn't "
@@ -289,7 +352,7 @@ class App:
         )
 
         legend = ttk.Frame(frame)
-        legend.pack(side="top", fill="x", pady=(0, 4))
+        legend.pack(side="top", fill="x", pady=(0, 8))
         tk.Label(legend, text="  ", background="#fff3a0").pack(side="left")
         ttk.Label(legend, text="still flagged").pack(side="left", padx=(4, 12))
         tk.Label(legend, text="  ", background="#b6f2b6").pack(side="left")
@@ -297,7 +360,7 @@ class App:
 
         text_frame = ttk.Frame(frame)
         text_frame.pack(side="top", fill="both", expand=True)
-        self.corrected_text = tk.Text(text_frame, wrap="word", padx=8, pady=6, relief="flat")
+        self.corrected_text = tk.Text(text_frame, wrap="word", padx=14, pady=10, relief="flat")
         self.corrected_text.tag_configure(SUSPICIOUS_TAG, background="#fff3a0")
         self.corrected_text.tag_configure(APPLIED_TAG, background="#b6f2b6")
         scrollbar = ttk.Scrollbar(text_frame, command=self.corrected_text.yview)
@@ -306,29 +369,38 @@ class App:
         scrollbar.pack(side="right", fill="y")
 
     def _build_suspicious_tab(self) -> None:
-        frame = ttk.Frame(self.notebook, padding=6)
+        frame = ttk.Frame(self.notebook, padding=12)
         self.notebook.add(frame, text="Suspicious Words")
 
         table_frame = ttk.Frame(frame)
-        table_frame.pack(side="top", fill="both", expand=True)
+        table_frame.pack(side="top", fill="both", expand=True, pady=(0, 10))
+
+        style = ttk.Style()
+        style.configure("Chechen.Treeview", rowheight=26)
+        style.configure("Chechen.Treeview.Heading", padding=(6, 4))
 
         self.tree = ttk.Treeview(
-            table_frame, columns=TREEVIEW_COLUMNS, show="headings", selectmode="browse"
+            table_frame,
+            columns=TREEVIEW_COLUMNS,
+            show="headings",
+            selectmode="browse",
+            style="Chechen.Treeview",
         )
         self.tree.tag_configure("oddrow", background="#f2f2f2")
         self.tree.tag_configure("evenrow", background="#ffffff")
-        widths = {
-            "id": 40,
-            "page": 60,
-            "word": 140,
-            "reason": 200,
-            "candidates": 160,
-            "decision": 80,
-            "replacement": 140,
+        column_specs: dict[str, tuple[int, Literal["center", "w"]]] = {
+            "id": (40, "center"),
+            "page": (60, "center"),
+            "word": (140, "center"),
+            "reason": (220, "center"),
+            "candidates": (180, "center"),
+            "decision": (90, "center"),
+            "replacement": (160, "center"),
         }
         for col in TREEVIEW_COLUMNS:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=widths.get(col, 100))
+            width, anchor = column_specs.get(col, (100, "w"))
+            self.tree.heading(col, text=col.capitalize())
+            self.tree.column(col, width=width, anchor=anchor)
         self.tree.pack(side="left", fill="both", expand=True)
         vsb = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
@@ -343,18 +415,18 @@ class App:
             wrap="word",
             height=4,
             state="disabled",
-            padx=8,
-            pady=6,
+            padx=12,
+            pady=8,
             relief="solid",
             borderwidth=1,
         )
         self.context_text.tag_configure("flagged_word", background="#fff3a0", font=("", 10, "bold"))
         self.context_text.pack(side="top", fill="x")
 
-        self.candidates_frame = ttk.Frame(context_frame, padding=(0, 4, 0, 0))
+        self.candidates_frame = ttk.Frame(context_frame, padding=(0, 6, 0, 0))
         self.candidates_frame.pack(side="top", fill="x")
 
-        edit_frame = ttk.Frame(frame, padding=8)
+        edit_frame = ttk.Frame(frame, padding=12)
         edit_frame.pack(side="bottom", fill="x")
 
         ttk.Label(edit_frame, text="Decision:").grid(row=0, column=0, sticky="w")
@@ -366,20 +438,20 @@ class App:
             state="readonly",
             width=12,
         )
-        self.decision_combo.grid(row=0, column=1, padx=4)
+        self.decision_combo.grid(row=0, column=1, padx=6)
 
         ttk.Label(edit_frame, text="Replacement:").grid(row=0, column=2, sticky="w")
         self.replacement_var = tk.StringVar()
         ttk.Entry(edit_frame, textvariable=self.replacement_var, width=30).grid(
-            row=0, column=3, padx=4
+            row=0, column=3, padx=6
         )
 
         ttk.Button(edit_frame, text="Save Row", command=self.on_save_row).grid(
-            row=0, column=4, padx=4
+            row=0, column=4, padx=6
         )
         ttk.Button(
             edit_frame, text="Apply All Reviewed Changes", command=self.on_apply_review
-        ).grid(row=0, column=5, padx=12)
+        ).grid(row=0, column=5, padx=16)
 
     def _build_metrics_tab(self) -> None:
         frame = ttk.Frame(self.notebook, padding=8)
@@ -414,6 +486,9 @@ class App:
         self.log_text.insert("end", text + "\n")
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
+
+    def _set_status(self, text: str) -> None:
+        self.status_bar.config(text=text)
 
     def _set_text_widget(self, widget: tk.Text, content: str, keep_editable: bool = False) -> None:
         widget.configure(state="normal")
@@ -506,6 +581,7 @@ class App:
         self.process_button.config(state="disabled")
         self.progress.start(10)
         self._append_log(f"Processing {self.current_path} ...")
+        self._set_status(f"Processing {self.current_path.name} ...")
 
         path = self.current_path
         is_batch = self.is_batch
@@ -693,6 +769,7 @@ class App:
             return
         Path(path).write_text(self.doc.corrected_text, encoding="utf-8")
         self._append_log(f"Wrote {path}")
+        self._set_status(f"Saved to {path}")
 
     def on_export_docx(self) -> None:
         if self.doc is None:
@@ -708,6 +785,7 @@ class App:
         )
         processor.export_docx(self.doc, Path(path))
         self._append_log(f"Wrote {path}")
+        self._set_status(f"Saved to {path}")
 
     def on_export_review_csv(self) -> None:
         if self.review_model is None:
@@ -722,6 +800,7 @@ class App:
             for row_dict in self.review_model.as_apply_dicts():
                 writer.writerow(row_dict)
         self._append_log(f"Wrote {path}")
+        self._set_status(f"Saved to {path}")
 
     # -- background job completion -----------------------------------
 
@@ -743,6 +822,7 @@ class App:
 
         if msg.error is not None:
             self._append_log(f"ERROR: {msg.error}")
+            self._set_status(f"Failed: {msg.error}")
             messagebox.showerror("Processing failed", str(msg.error))
             return
 
@@ -764,6 +844,11 @@ class App:
                 applied_words=[],
             )
         self._append_log("Done.")
+        n_corrections = len(self.doc.corrections)
+        n_suspicious = len(self.doc.suspicious)
+        self._set_status(
+            f"Done -- {n_corrections} correction(s), {n_suspicious} word(s) flagged for review."
+        )
 
     def _set_suspicious(self, doc: ProcessedDocument) -> None:
         rows = build_review_rows(doc.raw_text, doc.corrected_text, doc.suspicious)
