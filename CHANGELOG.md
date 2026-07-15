@@ -11,6 +11,89 @@ rather than git tags — see `docs/OCR_PROCESSOR_V5_4_FINAL_STATUS.md`
 for that era's state. 6.0.0 is the first version with a real package
 structure, semantic versioning, and this changelog.
 
+## [0.3.5]
+
+Raised via project discussion: word/reason/candidates columns in
+Suspicious Words were center-aligned (per an earlier explicit
+request), but on reflection, left alignment reads better for this
+kind of variable-length text content.
+
+### Changed
+- word/reason/candidates columns: center -> left ("w") alignment.
+  id/page/decision/replacement unchanged (center).
+
+## [0.3.4]
+
+Raised via project discussion, with screenshots: the status bar and
+notebook tab strip didn't line up on their left edge, and separately,
+the intentional border frame from 0.2.1-0.3.2 "выглядит некрасиво"
+(didn't look good) and was no longer wanted.
+
+### Fixed
+- The misalignment's actual cause: the status bar was packed with no
+  horizontal padding at all (flush against the border/window edge),
+  while the notebook had `padx=14` -- two different insets, hence the
+  visible gap between where the tab strip started and where the
+  status bar started.
+
+### Removed
+- The border frame introduced in 0.2.1 and adjusted several times
+  since (0.2.2, 0.2.3, 0.3.1, 0.3.2) is gone -- per project decision,
+  the "фоновый шов" that motivated it in the first place is no longer
+  worth having an intentional border over. `APP_BORDER_COLOR` /
+  `APP_BORDER_THICKNESS` removed as dead code along with it.
+- Status bar now uses the same `padx=14` as the notebook, so their
+  left/right edges line up.
+
+## [0.3.3]
+
+Raised via project discussion: `_configure_style()` was switching the
+whole app to the 'clam' ttk theme, needed only to make the Suspicious
+Words table's header styling (background/border) actually render on
+Windows (its native theme ignores those specific properties). This
+was very likely the real cause of 0.3.1's reported color shift
+(light-brown tint, changed row-stripe colors) -- not the border-color
+lookup that 0.3.2 already reverted, which was a separate, smaller
+change.
+
+### Changed
+- Added `USE_CLAM_THEME` (default `False`) as a simple, code-only
+  toggle. With it off (the new default): native Windows look
+  everywhere else, at the cost of the Treeview.Heading
+  background/border simply not rendering (harmless no-op on Windows'
+  native theme either way). Flip back to `True` to restore both the
+  working header styling and 'clam' everywhere else -- reversible in
+  one line, per project discussion, to compare the trade-off directly
+  rather than commit to one before trying it.
+
+## [0.3.2]
+
+Follow-up to 0.3.1, raised via project discussion with screenshots.
+Two separate things turned up while chasing "the border looks wrong":
+
+1. A saturated teal/blue border that also covered the Windows system
+   title bar itself -- confirmed, by process of elimination
+   (Windows' own "accent color on title bars" setting was already
+   off), to be a video driver rendering artifact, not this app's
+   code at all.
+2. A real regression from 0.3.1 itself: after that fix, the whole
+   app's colors shifted (a light-brown tint, and the Suspicious
+   Words table's row-stripe colors changed too) -- calling
+   `ttk.Style()` early in `_build_layout()`, before any ttk widget
+   yet existed, to look up `TFrame`'s background apparently
+   influenced which underlying theme got initialized for the rest of
+   the app, not just the border color it was meant to read.
+
+### Reverted
+- Border color back to a plain hardcoded constant
+  (`APP_BORDER_COLOR = "#8a8f98"`), same as before 0.2.2 and 0.3.1's
+  attempts at deriving it dynamically. Both dynamic approaches tried
+  (raw root background in 0.2.2/0.3.0, ttk theme lookup in 0.3.1)
+  caused real, different regressions on the same real Windows
+  machine -- a hardcoded constant has no equivalent risk, at the
+  minor cost of not automatically tracking whatever the system theme
+  happens to be.
+
 ## [0.3.1]
 
 Raised via project discussion, with a screenshot: on a real Windows

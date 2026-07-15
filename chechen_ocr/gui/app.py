@@ -60,15 +60,15 @@ logger = logging.getLogger(__name__)
 SUSPICIOUS_TAG = "suspicious_highlight"
 APPLIED_TAG = "applied_highlight"
 
-# Simple, code-only constant for the outer border-frame thickness --
-# change directly to adjust; no Settings UI exposure was wanted for
-# this. The color is NOT a fixed constant: it's read from the root
-# window's own default background at runtime (see _build_layout),
-# matching exactly the color that was showing through as the
-# "background seam" before the border became an intentional element
-# -- a hardcoded hex guess wouldn't reliably match across different
-# systems/themes the way this does.
-APP_BORDER_THICKNESS = 9
+# Simple, code-only toggle for whether _configure_style() switches to
+# the 'clam' ttk theme. 'clam' is needed for the Treeview.Heading
+# customizations below to actually render on Windows (its native
+# theme draws headers via OS routines regardless of what ttk style
+# options say), but it also changes the look of the whole app, not
+# just the table headers -- per project discussion, trying without it
+# first. Flip back to True to restore the 'clam'-everywhere look and
+# working header customization.
+USE_CLAM_THEME = False
 
 SUPPORTED_FILETYPES = [
     ("Supported files", "*.txt *.docx *.pdf *.jpg *.jpeg *.png *.tif *.tiff *.bmp *.gif"),
@@ -201,10 +201,18 @@ class App:
         this (relief='raised', borderwidth=1) had no visible effect on
         Windows even though it worked under Linux/Xvfb during testing.
         'clam' is a fully ttk-drawn theme (not delegated to the OS) and
-        actually honors these settings, so it's switched to explicitly
-        here rather than relying on the platform default."""
+        actually honors these settings -- but it also changes the look
+        of the ENTIRE app (buttons, tabs, everything), not just the
+        table headers, which surprised the maintainer more than the
+        header styling was worth. Per project discussion, USE_CLAM_THEME
+        defaults to False now: keeps the native Windows look everywhere
+        else, at the cost of the header background/border below simply
+        not rendering (Windows ignores those specific properties either
+        way, so setting them is harmless even when unused). Flip
+        USE_CLAM_THEME back to True to restore both the working header
+        styling and the 'clam' look for the rest of the app."""
         style = ttk.Style(self.root)
-        if "clam" in style.theme_names():
+        if USE_CLAM_THEME and "clam" in style.theme_names():
             style.theme_use("clam")
 
         style.configure("TNotebook", tabmargins=[2, 4, 2, 0])
@@ -249,34 +257,7 @@ class App:
         self.root.bind_all("<Control-o>", lambda _event: self.on_open_file())
 
     def _build_layout(self) -> None:
-        # Outer frame: fills the whole window edge-to-edge with no
-        # padding, colored to match the ttk theme's own default frame
-        # background -- this IS the border ("фоновый шов" made
-        # intentional, per project discussion). Reading this from
-        # ttk.Style() rather than the raw Tk root background
-        # (self.root.cget("background")) matters in practice: on at
-        # least one real Windows machine the raw root background
-        # rendered as a saturated accent color, not the neutral gray
-        # seen in this project's own Linux/Xvfb testing -- ttk's own
-        # frame background is what the content actually uses, so it's
-        # the more reliable color to match against, and is what this
-        # falls back to if the style lookup ever comes back empty.
-        style = ttk.Style()
-        border_color = style.lookup("TFrame", "background") or self.root.cget("background")
-        border_frame = tk.Frame(self.root, background=border_color)
-        border_frame.pack(fill="both", expand=True)
-
-        # Inner content frame: everything else lives here, inset from
-        # the border by APP_BORDER_THICKNESS on all four sides equally.
-        content = ttk.Frame(border_frame)
-        content.pack(
-            fill="both",
-            expand=True,
-            padx=APP_BORDER_THICKNESS,
-            pady=APP_BORDER_THICKNESS,
-        )
-
-        top = ttk.Frame(content, padding=14)
+        top = ttk.Frame(self.root, padding=14)
         top.pack(fill="x")
         self.path_label = ttk.Label(top, text="No file selected", anchor="w")
         self.path_label.pack(side="left", fill="x", expand=True)
@@ -310,10 +291,14 @@ class App:
             value="openai_vision",
         ).pack(side="left")
 
+        # padx here matches the notebook's own padx below, so the
+        # status bar's left/right edges line up with the tab strip's
+        # instead of sitting flush against the window edge while the
+        # notebook is inset.
         self.status_bar = ttk.Label(
-            content, text="Ready.", anchor="w", relief="sunken", padding=(10, 4)
+            self.root, text="Ready.", anchor="w", relief="sunken", padding=(10, 4)
         )
-        self.status_bar.pack(fill="x", side="bottom")
+        self.status_bar.pack(fill="x", side="bottom", padx=14, pady=(0, 10))
 
         style = ttk.Style()
         # Space between tabs, and consistent (non-"sinking") padding
@@ -322,7 +307,7 @@ class App:
         style.configure("TNotebook.Tab", padding=(14, 8))
         style.map("TNotebook.Tab", padding=[("selected", (14, 8))])
 
-        self.notebook = ttk.Notebook(content)
+        self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=14, pady=(0, 10))
 
         self.log_text = self._make_text_tab("Log")
@@ -410,9 +395,9 @@ class App:
         column_specs: dict[str, tuple[int, Literal["center", "w"]]] = {
             "id": (40, "center"),
             "page": (60, "center"),
-            "word": (140, "center"),
-            "reason": (220, "center"),
-            "candidates": (180, "center"),
+            "word": (140, "w"),
+            "reason": (220, "w"),
+            "candidates": (180, "w"),
             "decision": (90, "center"),
             "replacement": (160, "center"),
         }
